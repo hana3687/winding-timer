@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ワインディング連続練習タイマー</title>
+    <title>ワインディング・フルカウントタイマー</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -92,7 +92,6 @@
         <div id="lapDisplay">0 / 50</div>
 
         <div id="signal">いつでもどうぞ！</div>
-        
         <div id="display">00:00</div>
         
         <div class="btn-group">
@@ -111,26 +110,16 @@
     let currentLap = 0;       
     const MAX_LAP = 50;       
 
-    // 音声の準備
-    const sayYoi = new SpeechSynthesisUtterance("よーい");
-    sayYoi.lang = "ja-JP";
-    sayYoi.rate = 1.0;
+    // 音声ファイルの読み込み
+    const audioYoi = new Audio('yoi.wav');
+    const audioHajime = new Audio('hajime.wav');
+    const audioAllComplete = new Audio('all_complete.wav');
 
-    const sayHajime = new SpeechSynthesisUtterance("はじめ");
-    sayHajime.lang = "ja-JP";
-    sayHajime.rate = 1.1;
-
-    const sayFinish = new SpeechSynthesisUtterance("終了です");
-    sayFinish.lang = "ja-JP";
-
-    const sayAllComplete = new SpeechSynthesisUtterance("全50ラップ終了です。お疲れ様でした");
-    sayAllComplete.lang = "ja-JP";
-
-    // 音声エンジン起こし
-    window.addEventListener('DOMContentLoaded', () => {
-        const t = new SpeechSynthesisUtterance("");
-        speechSynthesis.speak(t);
-    });
+    // 【変更】1〜25秒のボイスファイルをあらかじめ読み込む
+    const countAudios = {};
+    for (let i = 1; i <= 25; i++) {
+        countAudios[i] = new Audio(`${i}.wav`);
+    }
 
     const lapDisplayDiv = document.getElementById('lapDisplay');
     const signalDiv = document.getElementById('signal');
@@ -151,7 +140,6 @@
         lapDisplayDiv.textContent = `${currentLap} / ${MAX_LAP}`;
     }
 
-    // 初回スタートボタンを押したとき
     function pressStart() {
         startBtn.disabled = true;
         resetBtn.disabled = true;
@@ -160,15 +148,13 @@
         if (currentLap === 0) {
             currentLap = 1;
             updateLapDisplay();
-            // 初回なので、6秒の準備時間を挟んでスタート
             runFirstLoopWithDelay();
         } else {
-            // 一時停止からの再開などの場合は、そのまま計測カウントへ
             startCounting();
         }
     }
 
-    // 【初回のみ】6秒の準備時間を挟む処理
+    // 初回のみ6秒の準備時間を挟む
     function runFirstLoopWithDelay() {
         totalSeconds = 0;
         updateDisplay();
@@ -176,67 +162,60 @@
         signalDiv.textContent = "準備してください……";
         signalDiv.style.color = "#8e8e93";
 
-        // 3.5秒後に「よーい……」
         delayTimeoutId1 = setTimeout(() => {
             signalDiv.textContent = "よーい……";
             signalDiv.style.color = "#ff9500";
-            speechSynthesis.speak(sayYoi);
+            audioYoi.play().catch(e => console.log("Audio play error:", e));
         }, 3500);
 
-        // ボタンを押してから合計6.0秒後に「はじめ！」
         delayTimeoutId2 = setTimeout(() => {
             signalDiv.textContent = "はじめ！";
             signalDiv.style.color = "#34c759";
-            speechSynthesis.speak(sayHajime);
+            audioHajime.play().catch(e => console.log("Audio play error:", e));
 
-            // カウント計測を開始
             startCounting();
         }, 6000);
     }
 
-    // 【メイン】1秒ずつのカウントアップ計測を行う関数
+    // カウント計測
     function startCounting() {
         timerId = setInterval(() => {
             totalSeconds++;
             updateDisplay();
 
-            // 25秒に達したときの処理
+            // 【変更】25秒未満でも、まずは「25.wav」までしっかり再生させる
+            if (countAudios[totalSeconds]) {
+                countAudios[totalSeconds].currentTime = 0;
+                countAudios[totalSeconds].play().catch(e => console.log("Audio play error:", e));
+            }
+
+            // 25秒に達したときのループ判定
             if (totalSeconds >= 25) {
                 clearInterval(timerId);
-                speechSynthesis.speak(sayFinish);
 
-                // 50ラップに到達したかチェック
                 if (currentLap >= MAX_LAP) {
                     signalDiv.textContent = "全ラップ終了！";
                     signalDiv.style.color = "#007aff";
                     startBtn.disabled = true;
                     stopBtn.disabled = true;
                     resetBtn.disabled = false;
-                    speechSynthesis.speak(sayAllComplete);
+                    audioAllComplete.play().catch(e => console.log("Audio play error:", e));
                 } else {
-                    // 次のラップへ進む
                     currentLap++;
                     updateLapDisplay();
                     
-                    // 【改良】インターバルなしで、すぐ次のラップの「0秒」からカウント開始
+                    // 「終了です」を挟まず、一瞬で「0秒」に戻して次のラップを即スタート
                     totalSeconds = 0;
                     updateDisplay();
                     signalDiv.textContent = `第 ${currentLap} ラップ 計測中`;
                     signalDiv.style.color = "#34c759";
                     startCounting(); 
                 }
-            } else {
-                // 25秒未満なら毎秒読み上げ
-                const sayCount = new SpeechSynthesisUtterance(String(totalSeconds));
-                sayCount.lang = "ja-JP";
-                sayCount.rate = 1.3; 
-                speechSynthesis.speak(sayCount);
             }
 
         }, 1000);
     }
 
-    // ストップ（一時停止）ボタンを押したとき
     function stopTimer() {
         clearInterval(timerId);
         clearTimeout(delayTimeoutId1);
@@ -249,7 +228,6 @@
         signalDiv.style.color = "#8e8e93";
     }
 
-    // リセットボタンを押したとき
     function resetTimer() {
         clearInterval(timerId);
         clearTimeout(delayTimeoutId1);
