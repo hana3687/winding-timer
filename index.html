@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ワインディング連続練習タイマー</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f7;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .timer-card {
+            background-color: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            text-align: center;
+            width: 340px;
+        }
+
+        .lap-counter {
+            font-size: 18px;
+            color: #8e8e93;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        #lapDisplay {
+            font-size: 28px;
+            color: #007aff;
+            font-weight: bold;
+        }
+
+        #signal {
+            font-size: 22px;
+            color: #8e8e93;
+            font-weight: bold;
+            height: 30px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }
+
+        #display {
+            font-size: 64px;
+            font-weight: 200;
+            color: #1d1d1f;
+            margin-bottom: 30px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px 0;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #startBtn { background-color: #34c759; color: white; }
+        #stopBtn  { background-color: #ff3b30; color: white; }
+        #resetBtn { background-color: #8e8e93; color: white; }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="timer-card">
+        <div class="lap-counter">LAP COUNT</div>
+        <div id="lapDisplay">0 / 50</div>
+
+        <div id="signal">いつでもどうぞ！</div>
+        
+        <div id="display">00:00</div>
+        
+        <div class="btn-group">
+            <button id="startBtn" onclick="pressStart()">スタート</button>
+            <button id="stopBtn" onclick="stopTimer()" disabled>ストップ</button>
+            <button id="resetBtn" onclick="resetTimer()">リセット</button>
+        </div>
+    </div>
+
+<script>
+    let timerId = null;
+    let delayTimeoutId1 = null;
+    let delayTimeoutId2 = null;
+    let totalSeconds = 0;
+    
+    let currentLap = 0;       
+    const MAX_LAP = 50;       
+
+    // 音声の準備
+    const sayYoi = new SpeechSynthesisUtterance("よーい");
+    sayYoi.lang = "ja-JP";
+    sayYoi.rate = 1.0;
+
+    const sayHajime = new SpeechSynthesisUtterance("はじめ");
+    sayHajime.lang = "ja-JP";
+    sayHajime.rate = 1.1;
+
+    const sayFinish = new SpeechSynthesisUtterance("終了です");
+    sayFinish.lang = "ja-JP";
+
+    const sayAllComplete = new SpeechSynthesisUtterance("全50ラップ終了です。お疲れ様でした");
+    sayAllComplete.lang = "ja-JP";
+
+    // 音声エンジン起こし
+    window.addEventListener('DOMContentLoaded', () => {
+        const t = new SpeechSynthesisUtterance("");
+        speechSynthesis.speak(t);
+    });
+
+    const lapDisplayDiv = document.getElementById('lapDisplay');
+    const signalDiv = document.getElementById('signal');
+    const displayDiv = document.getElementById('display');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    function updateDisplay() {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const mStr = String(minutes).padStart(2, '0');
+        const sStr = String(seconds).padStart(2, '0');
+        displayDiv.textContent = `${mStr}:${sStr}`;
+    }
+
+    function updateLapDisplay() {
+        lapDisplayDiv.textContent = `${currentLap} / ${MAX_LAP}`;
+    }
+
+    // 初回スタートボタンを押したとき
+    function pressStart() {
+        startBtn.disabled = true;
+        resetBtn.disabled = true;
+        stopBtn.disabled = false;
+        
+        if (currentLap === 0) {
+            currentLap = 1;
+            updateLapDisplay();
+            // 初回なので、6秒の準備時間を挟んでスタート
+            runFirstLoopWithDelay();
+        } else {
+            // 一時停止からの再開などの場合は、そのまま計測カウントへ
+            startCounting();
+        }
+    }
+
+    // 【初回のみ】6秒の準備時間を挟む処理
+    function runFirstLoopWithDelay() {
+        totalSeconds = 0;
+        updateDisplay();
+
+        signalDiv.textContent = "準備してください……";
+        signalDiv.style.color = "#8e8e93";
+
+        // 3.5秒後に「よーい……」
+        delayTimeoutId1 = setTimeout(() => {
+            signalDiv.textContent = "よーい……";
+            signalDiv.style.color = "#ff9500";
+            speechSynthesis.speak(sayYoi);
+        }, 3500);
+
+        // ボタンを押してから合計6.0秒後に「はじめ！」
+        delayTimeoutId2 = setTimeout(() => {
+            signalDiv.textContent = "はじめ！";
+            signalDiv.style.color = "#34c759";
+            speechSynthesis.speak(sayHajime);
+
+            // カウント計測を開始
+            startCounting();
+        }, 6000);
+    }
+
+    // 【メイン】1秒ずつのカウントアップ計測を行う関数
+    function startCounting() {
+        timerId = setInterval(() => {
+            totalSeconds++;
+            updateDisplay();
+
+            // 25秒に達したときの処理
+            if (totalSeconds >= 25) {
+                clearInterval(timerId);
+                speechSynthesis.speak(sayFinish);
+
+                // 50ラップに到達したかチェック
+                if (currentLap >= MAX_LAP) {
+                    signalDiv.textContent = "全ラップ終了！";
+                    signalDiv.style.color = "#007aff";
+                    startBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    resetBtn.disabled = false;
+                    speechSynthesis.speak(sayAllComplete);
+                } else {
+                    // 次のラップへ進む
+                    currentLap++;
+                    updateLapDisplay();
+                    
+                    // 【改良】インターバルなしで、すぐ次のラップの「0秒」からカウント開始
+                    totalSeconds = 0;
+                    updateDisplay();
+                    signalDiv.textContent = `第 ${currentLap} ラップ 計測中`;
+                    signalDiv.style.color = "#34c759";
+                    startCounting(); 
+                }
+            } else {
+                // 25秒未満なら毎秒読み上げ
+                const sayCount = new SpeechSynthesisUtterance(String(totalSeconds));
+                sayCount.lang = "ja-JP";
+                sayCount.rate = 1.3; 
+                speechSynthesis.speak(sayCount);
+            }
+
+        }, 1000);
+    }
+
+    // ストップ（一時停止）ボタンを押したとき
+    function stopTimer() {
+        clearInterval(timerId);
+        clearTimeout(delayTimeoutId1);
+        clearTimeout(delayTimeoutId2);
+        
+        startBtn.disabled = false;
+        resetBtn.disabled = false;
+        stopBtn.disabled = true;
+        signalDiv.textContent = "一時停止中";
+        signalDiv.style.color = "#8e8e93";
+    }
+
+    // リセットボタンを押したとき
+    function resetTimer() {
+        clearInterval(timerId);
+        clearTimeout(delayTimeoutId1);
+        clearTimeout(delayTimeoutId2);
+        
+        totalSeconds = 0;
+        currentLap = 0;
+        updateDisplay();
+        updateLapDisplay();
+        
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        resetBtn.disabled = true;
+        signalDiv.textContent = "いつでもどうぞ！";
+        signalDiv.style.color = "#8e8e93";
+    }
+</script>
+
+</body>
+</html>
